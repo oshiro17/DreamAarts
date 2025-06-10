@@ -45,7 +45,7 @@ void dfs(int current,
 
 int main() {
     std::string line;
-    std::regex line_regex(R"(\s*(\d+)\s*,\s*(\d+)\s*,\s*([0-9]*\.?[0-9]+)\s*)");
+    std::regex line_regex(R"(\s*(\d+)\s*,\s*(\d+)\s*,\s*(-?[0-9]*\.?[0-9]+)\s*)");
 
     while (std::getline(std::cin, line)) {
         if (line.empty()) continue;
@@ -87,7 +87,7 @@ int main() {
     }
 
     for (int station : longest_path) {
-        std::cout << station << "\r\n";
+        std::cout << station << std::endl;
     }
 
     return 0;
