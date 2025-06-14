@@ -2,93 +2,131 @@
 #include <unordered_map>
 #include <vector>
 #include <string>
-#include <sstream>
-#include <utility>
 #include <regex>
 #include <set>
+#include <exception>
+#include <algorithm>
 
-// --- グラフ構造 ---
-std::unordered_map<int, std::vector<std::pair<int, double>>> graph;
+// -------- 型定義 --------
+struct Edge { int to; double dist; };
+using Graph = std::unordered_map<int, std::vector<Edge>>;
 
-// --- 最長経路情報 ---
-std::vector<int> longest_path;
-double max_distance = 0.0;
+// -------- グローバル --------
+Graph            graph;
+std::vector<int> bestPath;
+double           bestDist     = 0.0;
+constexpr size_t RECUR_LIMIT  = 20000;
+bool             hasErrorLine = false;          // ★ エラー行があったか
 
-// --- DFS探索 ---
-void dfs(int current,
-         std::set<int>& visited,
+// -------- 文字列トリム -------- ★
+void trim(std::string& s) {
+    const char* ws = " \t\r\n";
+    s.erase(0, s.find_first_not_of(ws));
+    s.erase(s.find_last_not_of(ws) + 1);
+}
+
+// -------- ユーティリティ --------
+void addEdge(int u, int v, double d) {
+    graph[u].push_back({v, d});
+    graph[v].push_back({u, d});                 // 無向
+}
+
+// -------- DFS（root を保持，閉路対応）--------
+void dfs(int cur, int root,
+         std::set<int>& vis,
          std::vector<int>& path,
-         double distance) {
-    visited.insert(current);
-    path.push_back(current);
+         double dist, size_t depth = 0)
+{
+    if (depth > RECUR_LIMIT) return;
 
-    if (distance > max_distance) {
-        max_distance = distance;
-        longest_path = path;
-    }
+    vis.insert(cur);
+    path.push_back(cur);
 
-    auto it = graph.find(current);
-    if (it != graph.end()) {
-        for (const auto& edge : it->second) {
-            int next = edge.first;
-            double cost = edge.second;
+    if (dist > bestDist) { bestDist = dist; bestPath = path; }
 
-            if (visited.count(next) == 0) {
-                dfs(next, visited, path, distance + cost);
+    bool returnedToRoot = false;
+    for (const auto& e : graph[cur]) {
+        double nd = dist + e.dist;
+
+        // root へ 1 回だけ戻ってサイクルを評価
+        if (e.to == root && path.size() > 1 && !returnedToRoot) {
+            returnedToRoot = true;
+            if (nd > bestDist) {
+                auto cyc = path;
+                cyc.push_back(root);
+                bestDist = nd;
+                bestPath = std::move(cyc);
             }
+            continue;
         }
+        if (!vis.count(e.to))
+            dfs(e.to, root, vis, path, nd, depth + 1);
     }
 
-    visited.erase(current);
+    vis.erase(cur);
     path.pop_back();
 }
 
+// -------- メイン --------
 int main() {
-    std::string line;
-    std::regex line_regex(R"(\s*(\d+)\s*,\s*(\d+)\s*,\s*(-?[0-9]*\.?[0-9]+)\s*)");
+    std::ios::sync_with_stdio(false);
+    std::cin.tie(nullptr);
 
+    // -? で負値もマッチ
+    const std::regex re(R"(\s*(\d+)\s*,\s*(\d+)\s*,\s*(-?[0-9]*\.?[0-9]+)\s*)");
+    std::string line;
+
+    // ---- 入力 ----
     while (std::getline(std::cin, line)) {
+        trim(line);                               // ★ 空白だけの行を除去
         if (line.empty()) continue;
 
-        std::smatch match;
-        if (std::regex_match(line, match, line_regex) && match.size() == 4) {
-            try {
-                int from = std::stoi(match[1].str());
-                int to = std::stoi(match[2].str());
-                double distance = std::stod(match[3].str());
+        std::smatch m;
+        if (!std::regex_match(line, m, re) || m.size() != 4) {
+            std::cerr << "不正な入力形式: " << line << '\n';
+            hasErrorLine = true;                  // ★
+            continue;
+        }
 
-                if (distance < 0.0) {
-                    std::cerr << "無効な距離（負の値）: " << distance << " → 入力行: " << line << std::endl;
-                    continue;
-                }
-
-                graph[from].emplace_back(to, distance);
-            } catch (const std::exception& e) {
-                std::cerr << "数値変換エラー: " << e.what()
-                          << " → 入力行: " << line << std::endl;
+        try {
+            int    u = std::stoi(m[1].str());
+            int    v = std::stoi(m[2].str());
+            double d = std::stod(m[3].str());
+            if (d < 0.0) {
+                std::cerr << "無効な距離（負の値）: " << d
+                          << " → 入力行: " << line << '\n';
+                hasErrorLine = true;              // ★
+                continue;
             }
-        } else {
-            std::cerr << "不正な入力形式: " << line << std::endl;
+            addEdge(u, v, d);
+        }
+        catch (const std::exception& ex) {
+            std::cerr << "数値変換エラー: " << ex.what()
+                      << " → 入力行: " << line << '\n';
+            hasErrorLine = true;                  // ★
         }
     }
 
-    // --- DFS実行 ---
-    for (const auto& node : graph) {
-        int start = node.first;
-        std::set<int> visited;
-        std::vector<int> path;
-        dfs(start, visited, path, 0.0);
-    }
-
-    // --- 結果出力 ---
-    if (longest_path.empty()) {
-        std::cerr << "有効な経路が見つかりませんでした。" << std::endl;
+    // 入力が完全に空 or 有効エッジが 0
+    if (graph.empty()) {
+        if (!hasErrorLine) std::cerr << "入力なし\n";   // ★ 二重表示を防ぐ
         return 1;
     }
 
-    for (int station : longest_path) {
-        std::cout << station << std::endl;
+    // ---- 探索 ----
+    for (const auto& [start, _] : graph) {
+        std::set<int>   vis;
+        std::vector<int> path;
+        dfs(start, start, vis, path, 0.0);
     }
 
+    // ---- 向きを辞書順で最小化 ----
+    if (!bestPath.empty()) {
+        auto rev = std::vector<int>(bestPath.rbegin(), bestPath.rend());
+        if (bestPath > rev) std::reverse(bestPath.begin(), bestPath.end());
+    }
+
+    // ---- 出力 ----
+    for (int id : bestPath) std::cout << id << '\n';
     return 0;
 }
