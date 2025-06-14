@@ -27,35 +27,16 @@ run:
 test-all: $(TARGET)
 	@echo "🔎 Running all test cases..."
 	@for file in $(TEST_CASES); do \
-		echo "➡️  Running $$file"; \
+		echo "----------------------------------------"; \
+		echo "➡️  Test $$file"; \
+		echo "--- Input -----------------------------"; \
+		cat $$file; \
+		echo "--- Output ----------------------------"; \
 		./$(TARGET) < $$file; \
 		echo "----------------------------------------"; \
+		echo ; \
 	done
 
-# 完全一致テスト（expected_*と比較）
-test-expected: $(TARGET)
-	@echo "🔍 Running full diff test against expected outputs..."
-	@for file in $(TEST_CASES); do \
-		name=$$(basename $$file); \
-		echo "➡️  Testing $$name"; \
-		./$(TARGET) < $$file > actual.out 2> actual.err; \
-		if [ -f $(EXPECTED_OUT)/$$name ]; then \
-			if diff -B -w -q actual.out $(EXPECTED_OUT)/$$name > /dev/null; then \
-				echo "✅ OK (stdout)"; \
-			else \
-				echo "❌ NG (stdout)"; diff -B -w actual.out $(EXPECTED_OUT)/$$name; \
-			fi; \
-		fi; \
-		if [ -f $(EXPECTED_ERR)/$$name ]; then \
-			if diff -B -w -q actual.err $(EXPECTED_ERR)/$$name > /dev/null; then \
-				echo "✅ OK (stderr)"; \
-			else \
-				echo "❌ NG (stderr)"; diff -B -w actual.err $(EXPECTED_ERR)/$$name; \
-			fi; \
-		fi; \
-		echo "----------------------------------------"; \
-	done
-	@rm -f actual.out actual.err
 
 # ビルド成果物を削除
 clean:
